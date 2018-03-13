@@ -1,0 +1,179 @@
+title: "Next Word Prediction"
+
+author: "Michelle Tan"
+
+date: "3/11/2018"
+
+output: html_document
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Introduction
+This is the Milestone Report for the Coursera Data Science Capstone project. The goal of the capstone project is to create a predictive text model using a large text corpus of documents as training data. Natural language processing techniques will be used to perform the analysis and build the predictive model.
+
+This milestone report describes the major features of the training data with our exploratory data analysis and summarizes our plans for creating the predictive model.
+
+1. Getting the Data
+The data sets consist of text from 3 different sources: News, Blogs and Twitter feeds. The text data is provided in 4 different languages: English(US), German, Finnish and Russian. In this project we will focus only on the English(US) data sets.
+```{r}
+library(NLP)
+library(tm)
+blogs <- readLines("en_US.blogs.txt")
+news <- readLines("en_US.news.txt")
+twitter <- readLines("en_US.twitter.txt")
+```
+
+# Get file sizes
+```{r}
+library(stringi)
+blogs.size <- file.info("~/final/en_US/en_US.blogs.txt")$size/1024 ^ 2
+news.size <- file.info("~/final/en_US/en_US.news.txt")$size/1024 ^ 2
+twitter.size <- file.info("~/final/en_US/en_US.twitter.txt")$size/1024 ^ 2
+# Get words in files
+
+blogs.words <- stri_count_words(blogs)
+news.words <- stri_count_words(news)
+twitter.words <- stri_count_words(twitter)
+```
+
+# Summary of the data sets
+```{r}
+data.frame(source = c("blogs", "news", "twitter"),
+           file.size.MB = c(blogs.size, news.size, twitter.size),
+           num.lines = c(length(blogs), length(news), length(twitter)),
+           num.words = c(sum(blogs.words), sum(news.words), sum(twitter.words)),
+           mean.num.words = c(mean(blogs.words), mean(news.words), mean(twitter.words)))
+```
+## Cleaning the Data
+Before performing exploratory analysis, we must clean the data first. This involves removing URLs, special characters, punctuations, numbers, excess whitespace, stopwords, and changing the text to lower case. Since the data sets are quite large, we will randomly choose 0.05% of the data to demonstrate the data cleaning and exploratory analysis.
+
+```{r}
+# load text mining and NLP packages
+library(tm)
+library(NLP)
+
+# Sample the data
+set.seed(4234)
+dataSample1 <- c(sample(blogs, length(blogs) * 0.005),
+                 sample(news, length(news) * 0.005),
+                 sample(twitter, length(twitter) * 0.005))
+```
+
+# remove non-English charcters from data sample using "iconv"
+```{r}
+dataSample2 <- iconv(dataSample1, "latin1", "ASCII", sub="")
+
+```
+
+# Create corpus and clean the data
+```{r}
+corpus <- VCorpus(VectorSource(dataSample2))
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+corpus <- tm_map(corpus, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+corpus <- tm_map(corpus, toSpace, "@[^\\s]+")
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, removeWords, stopwords("en"))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+profanity <- c("shit", "piss", "fuck", "cunt", "cocksucker", "motherfucker", "tits")
+corpus <- tm_map(corpus, removeWords, profanity)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, PlainTextDocument)
+```
+##
+Exploratory Analysis
+We are now ready to perform exploratory analysis on the data. It would be interesting and helpful to find the most frequently occurring words in the data. Here we list the most common unigrams, bigrams, and trigrams.
+
+```{r}
+library(ggplot2)
+library(RWeka)
+options(mc.cores=1)
+# Tokenizer function  for n-grams.
+# Unigram tokenizer - 1 word 
+unigramToken <- function(x) NGramTokenizer(x, Weka_control(min=1, max=1))
+# Bigram tokenizer - 2 words
+bigramToken <- function(x) NGramTokenizer(x, Weka_control(min=2, max=2))
+# Trigram tokenizer - 3 words
+trigramToken <- function(x) NGramTokenizer(x, Weka_control(min=3, max=3))
+quadgramToken <- function(x) NGramTokenizer(x, Weka_control(min=4, max=4))
+quintgramToken <- function(x) NGramTokenizer(x, Weka_control(min=5, max=5))
+
+# helper function to find frequency of n-grams in the corpus
+topFreq <- function(tdm) {
+    freq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+    freq_dataframe <- (data.frame(word = names(freq), freq = freq))
+    return(freq_dataframe)
+}
+# Create files with n-gram frequency - most common unigrams, bigrams and trigrams - for plotting.
+# Unigram frequency
+unigram_freq <- TermDocumentMatrix(corpus, control=list(tokenize=unigramToken))
+unigram_freq2 <- removeSparseTerms(unigram_freq, 0.99)
+uniCorpus_freq3 <- topFreq(unigram_freq2)
+# bigram frequency
+bigram_freq <- TermDocumentMatrix(corpus, control=list(tokenize=bigramToken ))
+bigram_freq2 <- removeSparseTerms(bigram_freq, 0.999)
+biCorpus_freq3 <- topFreq(bigram_freq2)
+# trigram frequency
+trigram_freq <- TermDocumentMatrix(corpus,  control=list(tokenize=trigramToken))
+trigram_freq2 <- removeSparseTerms(trigram_freq, 0.9999)
+triCorpus_freq3 <- topFreq(trigram_freq2)
+# quardgram frequency
+quadgram_freq <- TermDocumentMatrix(corpus,  control=list(tokenize=quadgramToken))
+quadgram_freq2 <- removeSparseTerms(quadgram_freq, 0.9999)
+quadCorpus_freq3 <- topFreq(quadgram_freq2)
+quintgram_freq <- TermDocumentMatrix(corpus,  control=list(tokenize=quintgramToken))
+quintgram_freq2 <- removeSparseTerms(quintgram_freq, 0.9999)
+quintCorpus_freq3 <- topFreq(quintgram_freq2)
+```
+
+## save data for future anysisty 
+```{r}
+saveRDS(quintCorpus_freq3,"quint_gram.Rdata")
+saveRDS(quadCorpus_freq3,"quad_gram.Rdata")
+saveRDS(triCorpus_freq3,"tri_gram.Rdata")
+saveRDS(biCorpus_freq3,"bi_gram.Rdata")
+
+```
+
+Data Visualization
+##Here is a histogram of the 20 most common unigrams in the data sample.
+```{r}
+# plot top 20 unigrams
+n_gram_chart <- ggplot(uniCorpus_freq3[1:20,], aes(x=reorder(word, freq), y =freq)) +
+       theme(legend.title = element_blank()) +
+        geom_bar(stat="identity", fill = "coral2") + coord_flip() + labs(title= "Top 20 Unigrams (1 word)") +
+    xlab("Word") +
+    ylab("Unigram Frequency")
+print(n_gram_chart)
+
+```
+
+```{r}
+# plot top 20 bigrams
+bi_gram_chart <- ggplot(biCorpus_freq3[1:20,], aes(x=reorder(word, freq), y =freq)) +
+       theme(legend.title = element_blank()) +
+        geom_bar(stat="identity", fill = "springgreen4") + coord_flip() + labs(title= "Top 20 Bigrams (2 word phrases)") +
+    xlab("Phrases") +
+    ylab("Bigram Frequency")
+print(bi_gram_chart)
+```
+
+## Here is a histogram of the 20 most common trigrams in the data sample.
+```{r}
+# plot top 20 trigrams
+tri_gram_chart <- ggplot(triCorpus_freq3[1:20,], aes(x=reorder(word, freq), y =freq)) +
+       theme(legend.title = element_blank()) +
+        geom_bar(stat="identity", fill = "dodgerblue3") + coord_flip() + labs(title= "Top 20 Trigrams (3 words phrases)") +
+    xlab("Phrases") +
+    ylab("Trigram Frequency")
+print(tri_gram_chart)
+
+```
+
+Next Steps For Prediction Algorithm And Shiny App
+This concludes our exploratory analysis. The next steps of this capstone project would be to finalize our predictive algorithm, and deploy our algorithm as a Shiny app.
+
+Our predictive algorithm will be using n-gram model with frequency lookup similar to our exploratory analysis above. One possible strategy would be to use the trigram model to predict the next word. If no matching trigram can be found, then the algorithm would back off to the bigram model, and then to the unigram model if needed.
+
